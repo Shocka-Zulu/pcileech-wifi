@@ -135,7 +135,7 @@ module pcileech_tlps128_bar_controller(
                         bar_rsp_valid[6] ? bar_rsp_data[6] : 0;
     assign rd_rsp_valid = bar_rsp_valid[0] || bar_rsp_valid[1] || bar_rsp_valid[2] || bar_rsp_valid[3] || bar_rsp_valid[4] || bar_rsp_valid[5] || bar_rsp_valid[6];
     
-    pcileech_bar_impl_ar9287_wifi i_bar0(
+    pcileech_bar_impl_FsINCHAT i_bar0(
         .rst                   ( rst                           ),
         .clk                   ( clk                           ),
         .wr_addr               ( wr_addr                       ),
@@ -796,113 +796,31 @@ endmodule
 
 
 
-// ------------------------------------------------------------------------
-// pcileech wifi BAR implementation
-// Works with Qualcomm Atheros AR9287 chip wifi adapters
-// ------------------------------------------------------------------------
-module pcileech_bar_impl_ar9287_wifi(
+module pcileech_bar_impl_FsINCHAT(
     input               rst,
     input               clk,
-    // incoming BAR writes:
     input [31:0]        wr_addr,
     input [3:0]         wr_be,
     input [31:0]        wr_data,
     input               wr_valid,
-    // incoming BAR reads:
     input  [87:0]       rd_req_ctx,
     input  [31:0]       rd_req_addr,
     input               rd_req_valid,
     input  [31:0]       base_address_register,
-    // outgoing BAR read replies:
-    output bit [87:0]   rd_rsp_ctx,
-    output bit [31:0]   rd_rsp_data,
-    output bit          rd_rsp_valid
+    output reg [87:0]   rd_rsp_ctx,
+    output reg [31:0]   rd_rsp_data,
+    output reg          rd_rsp_valid
 );
 
-    bit [87:0]      drd_req_ctx;
-    bit [31:0]      drd_req_addr;
-    bit             drd_req_valid;
-
-    bit [31:0]      dwr_addr;
-    bit [31:0]      dwr_data;
-    bit             dwr_valid;
-
-    bit [31:0]      data_32;
-
-    time number = 0;
-
-    always @ ( posedge clk ) begin
-        if (rst)
-            number <= 0;
-
-        number          <= number + 1;
-        drd_req_ctx     <= rd_req_ctx;
-        drd_req_valid   <= rd_req_valid;
-        dwr_valid       <= wr_valid;
-        drd_req_addr    <= rd_req_addr;
-        rd_rsp_ctx      <= drd_req_ctx;
-        rd_rsp_valid    <= drd_req_valid;
-        dwr_addr        <= wr_addr;
-        dwr_data        <= wr_data;
-
-        if (drd_req_valid)
-            case ({drd_req_addr[31:24], drd_req_addr[23:16], drd_req_addr[15:08], drd_req_addr[07:00]} - base_address_register)
-                16'h2000 : begin data_32 <= 1;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM MGIC REQ
-                16'h2200 : begin data_32 <= 2;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM SIZE REQ
-                16'h2204 : begin data_32 <= 3;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM CSUM REQ
-                16'h2208 : begin data_32 <= 4;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM VERS REQ
-                16'h220C : begin data_32 <= 5;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM ANTN REQ
-                16'h2210 : begin data_32 <= 6;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM RDMN REQ
-                16'h2218 : begin data_32 <= 7;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM MAC0 REQ
-                16'h221C : begin data_32 <= 8;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM MAC1 REQ
-                16'h2220 : begin data_32 <= 9;  rd_rsp_data <= 32'hDEADBEEF; end // EEPROM MAC2 REQ
-                16'h2224 : begin data_32 <= 10; rd_rsp_data <= 32'hDEADBEEF; end // EEPROM RXTX REQ
-                16'h2228 : begin data_32 <= 11; rd_rsp_data <= 32'hDEADBEEF; end // EEPROM ENDZ REQ
-                16'h4020 : rd_rsp_data <= 32'h001800FF; // MAC VERSION
-                16'h4028 : rd_rsp_data <= 32'h00000060; // interrupt pending
-                16'h4038 : rd_rsp_data <= 32'h00000002; // interrupt pending
-                16'h407C :
-                case (data_32)
-                    1  : rd_rsp_data <= 32'h0000A55A; // EEPROM_MAGIC
-                    2  : rd_rsp_data <= 32'h00000004; // EEPROM_SIZE
-                    3  : rd_rsp_data <= 32'h0000FFFB; // EEPROM_CHECKSUM
-                    4  : rd_rsp_data <= 32'h0000E00E; // EEPROM_VERSION
-                    5  : rd_rsp_data <= 32'h0000E00E; // EEPROM_ANTENNA (2.4ghz, 5ghz)
-                    6  : rd_rsp_data <= 32'h00000000; // EEPROM_REGDOMAIN (location)
-                    7  : rd_rsp_data <= 32'h00006EC4; // EEPROM_MAC0 (C4:6E)
-                    8  :
-                        begin
-                            rd_rsp_data[7:0]   <= 8'h1F;
-                            rd_rsp_data[15:8]  <= ((0 + (number) % (15 + 1 - 0)) << 4) | (0 + (number + 3) % (15 + 1 - 0));
-                            rd_rsp_data[31:16] <= 16'h0000;
-                        end
-                    9  :
-                        begin
-                            rd_rsp_data[7:0]   <= ((0 + (number + 6) % (15 + 1 - 0)) << 4) | (0 + (number + 9) % (15 + 1 - 0));
-                            rd_rsp_data[15:8]  <= ((0 + (number + 12) % (15 + 1 - 0)) << 4) | (0 + (number + 15) % (15 + 1 - 0));
-                            rd_rsp_data[31:16] <= 16'h0000;
-                        end
-                    10 : rd_rsp_data <= 32'h00000100; // EEPROM_RXTX (00,01)
-                    11 : begin rd_rsp_data <= 32'h00000000; data_32 <= 0; end
-                    default : rd_rsp_data <= 32'h00000000;
-                endcase
-                16'h7000 : rd_rsp_data <= 32'h00000000; // AR_RTC_RC
-                16'h7044 : rd_rsp_data <= 32'h00000002; // AR_RTC_STATUS
-                16'h8000 : rd_rsp_data <= data_32;      // AR_STA_ID0
-                16'h806C : rd_rsp_data <= 32'h00000000; // AR_OBS_BUS_1
-                16'h9820 : rd_rsp_data <= data_32;      // AR_STA_ID0
-                16'h9860 : rd_rsp_data <= 32'h00000000; // ath_hal_wait
-                16'h9C00 : rd_rsp_data <= 32'h00000000; // rf claim
-                default : rd_rsp_data <= 32'hDEADBEEF;  // default value: 0xDEADBEEF
-            endcase
-        else if (dwr_valid)
-            case ({dwr_addr[31:24], dwr_addr[23:16], dwr_addr[15:08], dwr_addr[07:00]} - base_address_register)
-                16'h8000 : data_32 <= dwr_data;
-                16'h9820 : data_32 <= dwr_data;
-            endcase
-        else
-            rd_rsp_data <= 32'hDEADBEEF;
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            rd_rsp_valid <= 0;
+            rd_rsp_data <= 32'hFFFFFFFF;
+        end else begin
+            rd_rsp_ctx <= rd_req_ctx;
+            rd_rsp_valid <= rd_req_valid;
+            rd_rsp_data <= 32'hFFFFFFFF;
+        end
     end
 
 endmodule
-
